@@ -250,7 +250,10 @@ class FDT:
             yield current_path, node.nodes, node.props
             if not all_nodes:
                 break
-            node = all_nodes.pop()
+            # node = all_nodes.pop()
+            # pop from head instead of tail to maintain order as read from 
+            # an fdt file
+            node = all_nodes.pop(0)
 
     def merge(self, fdt_obj, replace: bool = True):
         """
