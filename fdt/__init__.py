@@ -20,7 +20,7 @@ from .misc import strip_comments, split_to_lines, get_version_info, extract_stri
 
 __author__  = "Martin Olejar"
 __contact__ = "martin.olejar@gmail.com"
-__version__ = "0.3.3"
+__version__ = "0.3.3-kg-1"
 __license__ = "Apache 2.0"
 __status__  = "Development"
 __all__     = [
@@ -69,7 +69,7 @@ class FDT:
         self.entries = entries
         self.header = Header() if header is None else header
         self.root = Node('/')
-        self.last_handle = 0
+        self.last_handle = 0x0
         self.label_to_handle = {}
         self.handle_to_label = {}
 
@@ -181,16 +181,41 @@ class FDT:
         """
         self.get_node(path, create).append(obj)
 
-    def add_label(self, label):
+    def add_label(self, labels):
         ''' track labels/references to convert to phandles
-            adds label with incrmenting handle to dictionary if not alread present
+            adds label with incrmenting handle to dictionary if not already present
             returns handle for which can be used to replace the reference'''
-        if label in self.label_to_handle:
+        if isinstance(labels, str):
+            label = labels.replace(" ","")
+            if label in self.label_to_handle:
+                return self.label_to_handle[label]
+            self.last_handle += 1
+            while self.last_handle in self.handle_to_label:
+                self.last_handle += 1
+            self.label_to_handle[label] = self.last_handle
+            self.handle_to_label[self.last_handle] = label
             return self.label_to_handle[label]
-        self.last_handle += 1
-        self.label_to_handle[label] = self.last_handle
-        self.handle_to_label[self.last_handle] = label
-        return self.last_handle
+        if isinstance(labels, list):
+            common_handle = None
+            for label in labels:
+                label = label.replace(" ","")
+                if label in self.label_to_handle:
+                    common_handle = self.label_to_handle[label]
+            if common_handle is None:
+                self.last_handle += 1
+                while self.last_handle in self.handle_to_label:
+                    self.last_handle += 1
+                common_handle = self.last_handle
+            for label in labels:
+                self.label_to_handle[label] = common_handle
+            label_concat = ""
+            for label_elem in labels:
+                if label_elem not in label_concat:
+                    label_concat = label_concat + label_elem + ": "
+            self.label_to_handle[label_concat] = common_handle
+            self.handle_to_label[common_handle] = labels
+            return common_handle
+        return None
 
     def search(self, name: str, itype: int = ItemType.ALL, path: str = '', recursive: bool = True) -> list:
         """ 
@@ -306,8 +331,8 @@ class FDT:
                     phandle_value = self.add_label(node.name)
                 else:
                     phandle_value = self.add_label(node.path+'/'+node.name)
-                node.set_property('linux,phandle', phandle_value)
-                node.set_property('phandle', phandle_value)
+                # node.set_property('linux,phandle', phandle_value)
+                # node.set_property('phandle', phandle_value)
 
 
     def to_dts(self, tabsize: int = 4) -> str:
@@ -431,13 +456,21 @@ def parse_dts(text: str, root_dir: str = '') -> FDT:
     for line in dts_lines:
         if line.endswith('{'):
             # start node
-            if ':' in line:  #indicates the present of a label
-                label, rest = line.split(':')
-                node_name = rest.split()[0]
-                new_node = Node(node_name)
-                new_node.set_label(label)
-
-                
+            if ':' in line:  # indicates the present of a label
+                counter = line.count(':')
+                if counter == 1:
+                    # 1 ':' so 1 label - so there are no rest_labels
+                    label, rest = line.replace('{', '').split(':')
+                    labels = [label]
+                else:
+                    # get first label in label and the rest are in the array
+                    splits = line.replace('{', '').split(':')
+                    labels = splits[:-1]
+                    rest = splits[-1]
+                node_name = rest.split()[-1]
+                new_node = Node(node_name.replace(' ', ''))
+                for label in set(labels):
+                    new_node.set_label(label.replace(' ', ''))
             else:
                 node_name = line.split()[0]
                 new_node = Node(node_name)
@@ -449,10 +482,10 @@ def parse_dts(text: str, root_dir: str = '') -> FDT:
         elif line.endswith('}'):
             # end node
             if curnode is not None:
-                if curnode.get_property('phandle') is None:
-                    if curnode.label is not None:
-                        handle = fdt_obj.add_label(curnode.label)
-                        curnode.set_property('phandle', handle)
+                # if curnode.get_property('phandle') is None:
+                #     if curnode.label is not None:
+                #        handle = fdt_obj.add_label(curnode.label)
+                #        curnode.set_property('_not_added_phandle', handle)
                 curnode = curnode.parent
         else:
             # properties

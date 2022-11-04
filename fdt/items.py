@@ -89,7 +89,7 @@ class BaseItem:
         assert isinstance(name, str)
         assert all(c in printable for c in name), "The value must contain just printable chars !"
         self._name = name
-        self._label = None
+        self._label = None    # or a list of labels
         self._parent = None
 
     def __str__(self):
@@ -106,16 +106,37 @@ class BaseItem:
         assert all(c in printable for c in value), "The value must contain just printable chars !"
         self._name = value
 
-    def set_label(self, value: str):
+    def set_label(self, value: [str | list]):
         """ 
         Set item label
         
         :param value: The label in string format
         """
-        assert isinstance(value, str)
-        assert all(c in printable for c in value), "The value must contain just printable chars !"
-        self._label = value
-
+        # assert isinstance(value, str)
+        # assert all(c in printable for c in value), "The value must contain just printable chars !"
+        if self._label is None:
+            if isinstance(value, str):
+                assert all(c in printable for c in value), "The value must contain just printable chars !"
+                self._label = [value]
+            if isinstance(value, list):
+                for l_item in value:
+                    assert isinstance(l_item, str)
+                    assert all(c in printable for c in l_item), "The value must contain just printable chars !"
+                # ensure no duplicates in the value i.e. ['soc', 'soc'] -> ['soc']
+                self._label = list(set(value))
+        else:
+            if isinstance(value, str):
+                assert all(c in printable for c in value), "The value must contain just printable chars !"
+                self._label.append(value)
+                # remove duplicates
+                self._label = list(set(self._label))
+            if isinstance(value, list):
+                for l_item in value:
+                    assert isinstance(l_item, str)
+                    assert all(c in printable for c in l_item), "The value must contain just printable chars !"
+                    self._label.append(l_item)
+                # remove duplicates
+                self._label = list(set(self._label))
 
     def set_parent(self, value):
         """ 
@@ -724,7 +745,10 @@ class Node(BaseItem):
         :param depth: Start depth for line
         """
         if self._label is not None:
-            dts  = line_offset(tabsize, depth, self._label + ': ' + self.name + ' {\n')
+            l_str = ""
+            for l_elem in self._label:
+                l_str = l_str + l_elem + ': '
+            dts  = line_offset(tabsize, depth, l_str + self.name + ' {\n')
         else:
             dts  = line_offset(tabsize, depth, self.name + ' {\n')
         # phantom properties which maintain reference state info
